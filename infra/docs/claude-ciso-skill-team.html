@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Building a 16-Role AI Security Team in Claude Code</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+    h1 { font-size: 1.8rem; border-bottom: 2px solid #000; padding-bottom: 8px; }
+    h2 { font-size: 1.2rem; margin-top: 2rem; color: #111; }
+    h3 { font-size: 1rem; margin-top: 1.5rem; color: #333; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; font-family: monospace; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; }
+    pre code { background: none; color: inherit; padding: 0; }
+    .meta { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+    ul li, ol li { margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+    th { background: #1a1a1a; color: #fff; padding: 8px 12px; text-align: left; }
+    td { border-bottom: 1px solid #e0e0e0; padding: 8px 12px; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; margin-right: 4px; }
+    .red { background: #fee2e2; color: #991b1b; }
+    .blue { background: #dbeafe; color: #1e40af; }
+    .yellow { background: #fef9c3; color: #854d0e; }
+    .green { background: #dcfce7; color: #166534; }
+    .orange { background: #ffedd5; color: #9a3412; }
+    .white { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .callout { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 12px 16px; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Building a 16-Role AI Security Team in Claude Code</h1>
+  <div class="meta">
+    <strong>Stack:</strong> Claude Code, Claude Skills (.claude/skills/), NEO Gents Infra &nbsp;|&nbsp;
+    <strong>Domain:</strong> ai_infra / security
+  </div>
+
+  <h2>What This Is</h2>
+  <p>
+    Claude Code supports custom <strong>skills</strong> — persistent persona files that give Claude a specialized role, domain knowledge, and output format. This playbook documents how to build a full 16-role security operations team as Claude skills, each scoped to a specific security function (cloud, network, identity, offensive, compliance, etc.) and tailored to a specific infrastructure stack. The result is a fully orchestrated AI security team you can invoke with a single slash command from any terminal session.
+  </p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li>Claude Code installed and running (<code>claude</code> CLI)</li>
+    <li>A <code>~/.claude/skills/</code> directory (create if it doesn't exist)</li>
+    <li>Knowledge of your target stack — in this build: OCI, WireGuard, Caddy, n8n, SFS-OS</li>
+  </ul>
+
+  <h2>Steps</h2>
+
+  <ol>
+    <li>
+      <strong>Create the skills directory structure</strong>
+      <pre><code>mkdir -p ~/.claude/skills/ciso
+mkdir -p ~/.claude/skills/grc-analyst
+mkdir -p ~/.claude/skills/pen-tester
+# repeat for each role</code></pre>
+      <p>Each skill lives in its own folder. Claude Code looks here when you type <code>/skill-name</code> in any session.</p>
+    </li>
+
+    <li>
+      <strong>Understand the SKILL.md format</strong>
+      <p>Each skill is a single <code>SKILL.md</code> file with a frontmatter header and a role definition body:</p>
+      <pre><code>---
+name: role-name
+description: One-line description — this shows in /help and triggers auto-invoke
+---
+
+# Role Name
+You are [role]. You do [function]...
+
+## Your domain
+...
+
+## Output format
+...</code></pre>
+      <p>The <code>description</code> field is critical — Claude uses it to decide when to auto-invoke the skill based on context.</p>
+    </li>
+
+    <li>
+      <strong>Define the orchestrator first (CISO)</strong>
+      <p>Build the CISO skill as the top-level orchestrator. It knows all 16 roles and can invoke them in sequence for a full security audit.</p>
+      <pre><code># ~/.claude/skills/ciso/SKILL.md
+---
+name: ciso
+description: Chief Information Security Officer. Orchestrates the full security team...
+---
+
+# CISO
+You are the CISO for NEO Gents. You run full security posture reviews by
+delegating to your team. When invoked with /ciso, you call each relevant
+role and synthesize findings into an executive summary...</code></pre>
+    </li>
+
+    <li>
+      <strong>Build skills by color team (security operations model)</strong>
+      <p>Organize skills using the standard security color wheel — this mirrors how real SOC teams operate:</p>
+      <table>
+        <tr><th>Color</th><th>Skills</th><th>Function</th></tr>
+        <tr><td><span class="tag white">White</span></td><td>ciso, grc-analyst</td><td>Governance &amp; orchestration</td></tr>
+        <tr><td><span class="tag red">Red</span></td><td>pen-tester</td><td>Offensive — adversary emulation</td></tr>
+        <tr><td><span class="tag white" style="background:#e9d5ff;color:#6b21a8;">Purple</span></td><td>purple-team</td><td>Red→blue bridge, detection validation</td></tr>
+        <tr><td><span class="tag blue">Blue</span></td><td>soc-analyst, incident-response, help-desk</td><td>Defensive monitoring &amp; response</td></tr>
+        <tr><td><span class="tag yellow">Yellow</span></td><td>cloud-engineer, devops-engineer, sysadmin, dba</td><td>Infrastructure &amp; operations</td></tr>
+        <tr><td><span class="tag green">Green</span></td><td>security-engineer, iam-engineer, network-engineer</td><td>Detection tooling &amp; access control</td></tr>
+        <tr><td><span class="tag orange">Orange</span></td><td>appsec-engineer, ai-security</td><td>Application &amp; AI security</td></tr>
+      </table>
+    </li>
+
+    <li>
+      <strong>Wire each skill to your specific stack</strong>
+      <p>Generic skills are less useful. Each skill should include a section about the actual environment it's protecting:</p>
+      <pre><code>## Primary environment
+- Cloud: Oracle Cloud Infrastructure (OCI)
+- VPN: WireGuard (site-to-site + peer access)
+- Reverse proxy: Caddy
+- Automation: n8n
+- OS: SFS-OS (custom hardened Linux)
+
+## OCI security checklist
+| Check | Pass / Risk |
+|---|---|
+| Static IP reserved | |
+| SSH key-based auth only | |
+| Firewall: 22/80/443 only | |
+...</code></pre>
+    </li>
+
+    <li>
+      <strong>Define a consistent output format per skill</strong>
+      <p>Standardize how each skill reports findings. Example for infrastructure roles:</p>
+      <pre><code>[CLOUD] FINDING: &lt;title&gt;
+Severity: &lt;critical|high|medium|low|info&gt;
+Resource: &lt;resource type and ID&gt;
+Detail: &lt;what is wrong and the risk&gt;
+Remediation: &lt;specific fix — CLI command or config change&gt;</code></pre>
+      <p>Consistent format means you can pipe findings into a database (like <code>db.py</code>) for tracking.</p>
+    </li>
+
+    <li>
+      <strong>Verify skills are loaded</strong>
+      <p>Open any Claude Code session and type:</p>
+      <pre><code>/help</code></pre>
+      <p>All 16 skills should appear in the available skills list. Test each one individually before running the full CISO audit.</p>
+      <pre><code>/cloud-engineer   # test a yellow role
+/pen-tester       # test the red role
+/ciso             # run the full orchestrated audit</code></pre>
+    </li>
+
+    <li>
+      <strong>Run a full security audit</strong>
+      <p>With all 16 skills loaded, a single command triggers the full team:</p>
+      <pre><code>/ciso</code></pre>
+      <p>CISO delegates to each relevant role, collects findings, and returns an executive summary with severity-ranked action items.</p>
+    </li>
+  </ol>
+
+  <h2>Verification</h2>
+  <ul>
+    <li>Run <code>/help</code> in any Claude Code session — all 16 skills appear in the roster</li>
+    <li>Run <code>/ciso</code> — it invokes sub-roles and returns a structured findings report</li>
+    <li>Run an individual skill like <code>/pen-tester</code> — it responds in its defined output format</li>
+    <li>Check <code>~/.claude/skills/</code> — 16 folders each with a <code>SKILL.md</code> file</li>
+  </ul>
+
+  <div class="callout">
+    <strong>Full roster:</strong> ciso, grc-analyst, pen-tester, purple-team, soc-analyst, incident-response, help-desk, cloud-engineer, devops-engineer, sysadmin, dba, security-engineer, iam-engineer, network-engineer, appsec-engineer, ai-security
+  </div>
+
+  <h2>Why This Matters for Cloud Engineering</h2>
+  <ul>
+    <li>Demonstrates applied knowledge of security operations models (color wheel, SOC structure) and how they map to real infrastructure roles — directly relevant to cloud security engineer and DevSecOps positions.</li>
+    <li>Shows ability to build tooling around an AI platform (Claude Code skills API) to automate security review workflows — a practical example of AI integration into an engineering operations stack.</li>
+    <li>Each skill is scoped to a specific production stack (OCI, WireGuard, Caddy, n8n) — proving hands-on familiarity with enterprise cloud infrastructure, not just theoretical knowledge.</li>
+  </ul>
+
+</body>
+</html>
