@@ -1,0 +1,27 @@
+---
+
+## The Stack
+
+Built on Oracle Cloud free tier. $0-5/month. We own it.
+
+| Layer | Tech |
+|---|---|
+| Cloud | Oracle Cloud Infrastructure (OCI) — Always-Free ARM |
+| VPN | WireGuard |
+| Reverse Proxy | Caddy |
+| Automation | n8n (self-hosted Docker) |
+| AI Gateway | OpenClaw + OpenRouter |
+| Agent OS | SFS-OS (custom Python multi-agent system) |
+| Security | 16-role AI security team in Claude Code |
+
+---
+
+## Proof of Work Docs
+
+Step-by-step playbooks from real builds:
+
+- [CISO Skill Team — 16-role AI security team in Claude Code](infra/docs/claude-ciso-skill-team.html)
+
+More added as we build.
+
+---
