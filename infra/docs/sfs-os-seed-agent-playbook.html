@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Building the SFS-OS Seed Agent — Nori</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+    h1 { font-size: 1.8rem; border-bottom: 2px solid #000; padding-bottom: 8px; }
+    h2 { font-size: 1.2rem; margin-top: 2rem; color: #111; }
+    h3 { font-size: 1rem; margin-top: 1.5rem; color: #444; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; font-family: monospace; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; }
+    pre code { background: none; color: inherit; padding: 0; }
+    .meta { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+    ul li, ol li { margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+    th { background: #1a1a1a; color: #fff; padding: 8px 12px; text-align: left; }
+    td { border-bottom: 1px solid #e0e0e0; padding: 8px 12px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9f9f9; }
+    .callout { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 12px 16px; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+    .warn { background: #fef9c3; border-left: 4px solid #ca8a04; padding: 12px 16px; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+
+    @media print {
+      body { max-width: 100%; margin: 0; padding: 20px; font-size: 0.85rem; }
+      h1 { font-size: 1.4rem; }
+      h2 { font-size: 1rem; }
+      pre { background: #1e1e1e !important; color: #d4d4d4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
+      th { background: #1a1a1a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      a { color: #1a1a1a; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Building the SFS-OS Seed Agent — Nori</h1>
+  <div class="meta">
+    <strong>Stack:</strong> Python, SQLite, Claude API (via OpenRouter), SFS-OS &nbsp;|&nbsp;
+    <strong>Domain:</strong> AI Infrastructure / Python Agent Development
+  </div>
+
+  <h2>What This Is</h2>
+  <p>
+    SFS-OS is a self-hosted Python multi-agent system that runs weekly business and personal life audits. The <strong>seed agent (Nori)</strong> is the orchestrator — it boots the system, routes data, dispatches 9 specialist sub-agents, writes briefs, and persists findings to a SQLite database via <code>db.py</code>. This playbook covers how the full pipeline was built: the agent architecture, the database layer, and how everything is wired together.
+  </p>
+
+  <h2>Architecture Overview</h2>
+  <table>
+    <tr><th>Layer</th><th>File</th><th>What it does</th></tr>
+    <tr><td>Orchestrator</td><td><code>seed.py</code></td><td>Nori — boots the system, routes data, dispatches agents, saves briefs</td></tr>
+    <tr><td>Database</td><td><code>lib/db.py</code></td><td>SQLite persistence — posture items + API usage metering</td></tr>
+    <tr><td>Config</td><td><code>config/neo_gents.json</code></td><td>Client profile, milestone tracking, persona selection</td></tr>
+    <tr><td>Persona</td><td><code>prompts/personas/nori.txt</code></td><td>Nori's system prompt — COO + Chief of Staff identity</td></tr>
+    <tr><td>Memory</td><td><code>memory/nori-memory.md</code></td><td>Persistent state between weekly runs</td></tr>
+    <tr><td>Data drop</td><td><code>data/inbox/</code></td><td>Drop any file here — AI classifier routes it automatically</td></tr>
+    <tr><td>Output</td><td><code>briefs/</code></td><td>Generated weekly markdown briefs (business, personal, security)</td></tr>
+    <tr><td>Event log</td><td><code>logs/events.jsonl</code></td><td>Structured event log for every agent run</td></tr>
+  </table>
+
+  <h2>Sub-Agent Roster</h2>
+  <table>
+    <tr><th>Agent</th><th>Track</th><th>What it analyzes</th><th>Data needed</th></tr>
+    <tr><td>revenue_agent</td><td>Business</td><td>Leads, CRM notes, revenue trends</td><td>leads.csv or crm_notes.txt</td></tr>
+    <tr><td>milestone_agent</td><td>Business</td><td>Progress toward current level goal, blockers</td><td>Always runs</td></tr>
+    <tr><td>team_agent</td><td>Business</td><td>Team capacity, hire decisions</td><td>Always runs</td></tr>
+    <tr><td>risk_agent</td><td>Business</td><td>Synthesizes all business findings into risk summary</td><td>Always runs</td></tr>
+    <tr><td>money_agent</td><td>Personal</td><td>Bank transactions, spending patterns</td><td>bank_MONTH.csv</td></tr>
+    <tr><td>time_agent</td><td>Personal</td><td>Calendar and task time audit</td><td>calendar.txt</td></tr>
+    <tr><td>growth_agent</td><td>Personal</td><td>Goals progress and learning</td><td>goals.txt</td></tr>
+    <tr><td>family_agent</td><td>Personal</td><td>Family context and priorities</td><td>Always runs (uses config)</td></tr>
+    <tr><td>ciso_agent</td><td>Security</td><td>Security posture scan — wired to db.py findings</td><td>Always runs on business track</td></tr>
+  </table>
+
+  <h2>Step 1 — Project structure</h2>
+  <pre><code>mkdir -p sfs-os/agents/business
+mkdir -p sfs-os/agents/personal
+mkdir -p sfs-os/agents/security
+mkdir -p sfs-os/lib
+mkdir -p sfs-os/prompts/personas
+mkdir -p sfs-os/memory
+mkdir -p sfs-os/data/inbox
+mkdir -p sfs-os/data/business
+mkdir -p sfs-os/data/personal
+mkdir -p sfs-os/briefs
+mkdir -p sfs-os/logs
+cd sfs-os
+python3 -m venv venv
+source venv/bin/activate
+pip install anthropic python-dotenv</code></pre>
+
+  <h2>Step 2 — Build the database layer (db.py)</h2>
+  <p>Before the seed agent, build the persistence layer. Two tables: <code>posture_items</code> for security/IT findings that survive across runs, and <code>meter_events</code> for API usage tracking.</p>
+  <pre><code># lib/db.py — key functions
+
+init_db()
+# Creates both tables if they don't exist. Safe to call every run.
+# Called at the top of seed.py main() so tables always exist before agents run.
+
+upsert_posture_item(domain, agent, title, detail, severity, source_file, run_date)
+# Inserts a finding. If an open item with the same domain+agent+title already
+# exists, updates it instead of creating a duplicate. Prevents finding bloat.
+# Severity values: critical | high | medium | low | info
+
+resolve_posture_item(item_id, status)
+# Marks a finding resolved. Status: closed | accepted | wont_fix
+
+get_posture_summary()
+# Returns counts by severity for all open items.
+# Used by CISO agent dashboard to show: 3 critical, 1 high, etc.
+
+log_meter_event(agent, model, prompt_tokens, completion_tokens, latency_ms, success)
+# Logs every API call. Lets you track spend per agent per run.</code></pre>
+
+  <h2>Step 3 — Wire db.py into seed.py</h2>
+  <p>The key connection: <code>init_db()</code> is called once at startup, before any agents run. This guarantees tables exist. The CISO agent then writes findings to <code>posture_items</code> via <code>upsert_posture_item()</code> during its run.</p>
+  <pre><code># In seed.py main():
+
+from lib.db import init_db
+
+def main():
+    config = load_config()
+    client = get_client()
+
+    # Initialize database — creates tables if they don't exist
+    init_db()
+
+    # Now safe to run agents that write to the DB
+    emit_event("plan", "active", config)
+    ...</code></pre>
+
+  <div class="callout">
+    <strong>Why upsert instead of insert?</strong> The CISO agent runs every week. Without upsert, you'd get duplicate rows for the same open finding (e.g., "SSH key rotation overdue") accumulating every run. Upsert checks for an existing open item with the same domain+agent+title — if found, it updates the detail and timestamp instead of creating a new row.
+  </div>
+
+  <h2>Step 4 — Build the seed agent orchestration flow</h2>
+  <p>Nori's decision filter runs before dispatching agents — it checks what data is available and prints a readiness report:</p>
+  <pre><code>def run_decision_filter(business_manifest, personal_manifest):
+    has_biz = "YES" if has_data(business_manifest, "csv", "text") else "NO — add business data files"
+    print(f"  1. Revenue support in 30 days?  {has_biz}")
+    print(f"  2. Existing team member handles?  NO — Nori is orchestrating")
+    print(f"  3. Coach Berry bottleneck?  CHECKING — milestone agent will assess")
+    print(f"  4. Broken manual process?  CHECKING — risk agent will assess")</code></pre>
+
+  <p>Agents are gated on data availability — some always run, some skip if no data is present:</p>
+  <pre><code># Revenue only runs if there's actual data to analyze
+if has_data(manifest, DATA_TYPE_CSV, DATA_TYPE_TEXT):
+    results.append(revenue_agent.run(manifest, client, config))
+else:
+    skipped.append("revenue (no leads.csv or crm_notes.txt)")
+
+# Milestone always runs — works from config even with no data files
+results.append(milestone_agent.run(manifest, client, config))</code></pre>
+
+  <h2>Step 5 — Persistent memory between runs</h2>
+  <p>After every run, Nori writes a memory file that gets loaded at the top of the next run. This gives the agent continuity — it knows last week's MRR, milestone progress, and open risks without re-reading all the data.</p>
+  <pre><code># Memory is written at end of main()
+update_memory(all_results, config, persona_id)
+
+# Memory is read at start of main()
+memory = read_memory(persona_id)
+if memory:
+    print(f"[nori/{persona_id}] Memory loaded from last session.")</code></pre>
+  <p>Memory file location: <code>memory/nori-memory.md</code> — human-readable markdown, versioned with each run date.</p>
+
+  <h2>Step 6 — The inbox classifier (auto-routing)</h2>
+  <p>Drop any file into <code>data/inbox/</code> and the classifier figures out where it belongs. Bank statement? Routes to <code>data/personal/</code>. CRM export? Routes to <code>data/business/</code>. Uses Claude to classify by content, not filename.</p>
+  <pre><code># Called before scanning in main()
+classify_inbox(BASE_DIR, client)
+
+# After classification, scan picks up correctly routed files
+biz_manifest = scan(str(_data_root(config) / "business"))
+per_manifest  = scan(str(_data_root(config) / "personal"))</code></pre>
+
+  <h2>Step 7 — Run it</h2>
+  <pre><code>cd ~/Desktop/SFS-OS
+source venv/bin/activate
+
+# Run both tracks
+python seed.py
+
+# Run business only
+python seed.py --mode business
+
+# Run personal only
+python seed.py --mode personal</code></pre>
+
+  <h2>Step 8 — Drop data and get a brief</h2>
+  <pre><code># Business data
+cp leads.csv  data/business/
+cp crm_notes.txt  data/business/
+
+# Personal data
+cp bank_march.csv  data/personal/
+cp calendar.txt  data/personal/
+cp goals.txt  data/personal/
+
+# Or just drop anything in inbox — Nori routes it
+cp mystery_file.csv  data/inbox/
+
+# Run
+python seed.py</code></pre>
+  <p>Briefs are saved to <code>briefs/YYYY-MM-DD-business.md</code>, <code>briefs/YYYY-MM-DD-personal.md</code>, and <code>briefs/YYYY-MM-DD-security.md</code>.</p>
+
+  <h2>Verification</h2>
+  <ul>
+    <li><code>python seed.py</code> runs without errors and prints agent results</li>
+    <li><code>ls briefs/</code> shows dated brief files after the run</li>
+    <li><code>ls data/sfs_os.db</code> confirms the SQLite database was created</li>
+    <li><code>cat memory/nori-memory.md</code> shows the memory file was written</li>
+    <li><code>cat logs/events.jsonl</code> shows structured event log entries</li>
+  </ul>
+
+  <h2>Why This Matters for Cloud Engineering</h2>
+  <ul>
+    <li>Demonstrates multi-agent orchestration architecture — coordinator pattern with gated sub-agents is a core pattern in production AI systems.</li>
+    <li>SQLite persistence layer with upsert logic shows database design thinking — not just "store everything," but smart deduplication to keep data clean across recurring runs.</li>
+    <li>Event logging to JSONL, metered API usage tracking, and structured memory files are the observability practices cloud engineers implement on real AI infrastructure.</li>
+    <li>Runs on self-hosted OCI infrastructure at $0/month — proof of full-stack ownership from agent code to cloud deployment.</li>
+  </ul>
+
+  <p style="margin-top:3rem; font-size:0.85rem; color:#888;">
+    Full source: <a href="https://github.com/neogents-ai/GOER">github.com/neogents-ai/GOER</a>
+  </p>
+
+</body>
+</html>
